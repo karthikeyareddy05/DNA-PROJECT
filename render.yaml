@@ -3,10 +3,8 @@ services:
     name: plant-species-detection
     env: python
     plan: starter
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app_simple:app
+    buildCommand: pip install -r requirements_lightweight.txt
+    startCommand: gunicorn app_lightweight:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.16
-      - key: TF_CPP_MIN_LOG_LEVEL
-        value: 2

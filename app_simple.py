@@ -5,13 +5,10 @@ from flask import Flask, request, jsonify, render_template
 from werkzeug.utils import secure_filename
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.models import load_model
-import base64
-from io import BytesIO
-from PIL import Image
 import logging
 
-# Configure TensorFlow for better memory usage
-tf.config.experimental.set_memory_growth(tf.config.list_physical_devices('GPU')[0], True) if tf.config.list_physical_devices('GPU') else None
+# Configure TensorFlow for minimal memory usage
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Reduce TensorFlow logging
 tf.config.threading.set_inter_op_parallelism_threads(1)
 tf.config.threading.set_intra_op_parallelism_threads(1)
 
@@ -31,26 +28,31 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Global model variable
 model = None
+model_loaded = False
 
 def load_model_safely():
     """Load model with better error handling"""
-    global model
+    global model, model_loaded
     try:
         logger.info("Attempting to load model...")
         if os.path.exists("best_model.h5"):
-            model = load_model("best_model.h5")
+            # Load model with minimal memory footprint
+            model = load_model("best_model.h5", compile=False)
             logger.info("✅ Model loaded successfully!")
+            model_loaded = True
             return True
         else:
             logger.error("❌ Model file 'best_model.h5' not found!")
+            model_loaded = False
             return False
     except Exception as e:
         logger.error(f"❌ Error loading model: {e}")
         model = None
+        model_loaded = False
         return False
 
 # Try to load model on startup
-model_loaded = load_model_safely()
+load_model_safely()
 
 # Load class labels (same order as during training)
 class_labels = [
@@ -66,14 +68,18 @@ def allowed_file(filename):
 
 def preprocess_image(image_path):
     """Preprocess image for model prediction"""
-    img = image.load_img(image_path, target_size=IMG_SIZE)
-    img_array = image.img_to_array(img) / 255.0
-    img_array = np.expand_dims(img_array, axis=0)
-    return img_array
+    try:
+        img = image.load_img(image_path, target_size=IMG_SIZE)
+        img_array = image.img_to_array(img) / 255.0
+        img_array = np.expand_dims(img_array, axis=0)
+        return img_array
+    except Exception as e:
+        logger.error(f"Error preprocessing image: {e}")
+        return None
 
 def predict_species(image_path):
     """Predict plant species from image"""
-    if model is None:
+    if not model_loaded or model is None:
         logger.error("Model not loaded")
         return None, 0.0
     
@@ -82,7 +88,8 @@ def predict_species(image_path):
         
         # Preprocess image
         img_array = preprocess_image(image_path)
-        logger.info("Image preprocessed successfully")
+        if img_array is None:
+            return None, 0.0
         
         # Make prediction
         prediction = model.predict(img_array, verbose=0)
@@ -116,13 +123,11 @@ def predict():
         
         # Check if file is uploaded
         if 'file' not in request.files:
-            logger.warning("No file uploaded")
             return jsonify({'error': 'No file uploaded'}), 400
         
         file = request.files['file']
         
         if file.filename == '':
-            logger.warning("No file selected")
             return jsonify({'error': 'No file selected'}), 400
         
         if file and allowed_file(file.filename):
@@ -132,7 +137,6 @@ def predict():
             filename = secure_filename(file.filename)
             filepath = os.path.join(UPLOAD_FOLDER, filename)
             file.save(filepath)
-            logger.info(f"File saved to: {filepath}")
             
             # Make prediction
             predicted_class, confidence = predict_species(filepath)
@@ -140,12 +144,10 @@ def predict():
             # Clean up uploaded file
             try:
                 os.remove(filepath)
-                logger.info("Temporary file cleaned up")
             except:
                 pass
             
             if predicted_class is None:
-                logger.error("Prediction failed")
                 return jsonify({'error': 'Prediction failed. Please try a different image.'}), 500
             
             # Format response
@@ -155,14 +157,12 @@ def predict():
                 'status': 'success'
             }
             
-            logger.info(f"Prediction successful: {result}")
             return jsonify(result)
         else:
-            logger.warning(f"Invalid file type: {file.filename}")
             return jsonify({'error': 'Invalid file type. Please upload PNG, JPG, or JPEG'}), 400
             
     except Exception as e:
-        logger.error(f"Unexpected error in predict route: {str(e)}")
+        logger.error(f"Unexpected error: {str(e)}")
         return jsonify({'error': f'Server error: {str(e)}'}), 500
 
 @app.route('/health')
@@ -170,24 +170,14 @@ def health():
     """Health check endpoint"""
     return jsonify({
         'status': 'healthy', 
-        'model_loaded': model is not None,
-        'model_file_exists': os.path.exists("best_model.h5"),
-        'upload_folder_exists': os.path.exists(UPLOAD_FOLDER)
+        'model_loaded': model_loaded,
+        'model_file_exists': os.path.exists("best_model.h5")
     })
 
-@app.route('/reload-model', methods=['POST'])
-def reload_model():
-    """Reload model endpoint"""
-    global model_loaded
-    try:
-        model_loaded = load_model_safely()
-        if model_loaded:
-            return jsonify({'status': 'success', 'message': 'Model reloaded successfully'})
-        else:
-            return jsonify({'status': 'error', 'message': 'Failed to reload model'}), 500
-    except Exception as e:
-        logger.error(f"Error reloading model: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+@app.route('/test')
+def test():
+    """Simple test endpoint"""
+    return jsonify({'message': 'App is running!', 'model_loaded': model_loaded})
 
 if __name__ == '__main__':
     logger.info("Starting Flask application...")

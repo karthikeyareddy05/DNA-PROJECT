@@ -76,6 +76,16 @@ pip install tensorflow numpy pillow
 
 ## Usage
 
+### Web Application (Recommended)
+
+Start the Flask web application:
+
+```bash
+python app.py
+```
+
+Then open your browser and go to `http://localhost:5000` to use the web interface.
+
 ### Training the Model
 
 To train the model on your dataset:
@@ -91,7 +101,7 @@ This script will:
 - Save the best model as `best_model.h5`
 - Evaluate on the test set
 
-### Making Predictions
+### Making Predictions (Command Line)
 
 To predict the species of a plant image:
 
@@ -125,17 +135,78 @@ predict_species("path/to/your/plant_image.jpg")
 - **Data Augmentation**: Rotation (20°), Zoom (0.2), Horizontal Flip
 - **Callbacks**: EarlyStopping (patience=3), ModelCheckpoint
 
+## Deployment
+
+### Deploy to Render
+
+1. **Connect your GitHub repository to Render:**
+   - Go to [Render Dashboard](https://dashboard.render.com)
+   - Click "New +" → "Web Service"
+   - Connect your GitHub account and select this repository
+
+2. **Configure the deployment:**
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `gunicorn app:app`
+   - **Python Version**: 3.9.16
+
+3. **Deploy:**
+   - Click "Create Web Service"
+   - Render will automatically build and deploy your application
+
+### Deploy to Heroku
+
+1. **Install Heroku CLI and login:**
+```bash
+heroku login
+```
+
+2. **Create a new Heroku app:**
+```bash
+heroku create your-app-name
+```
+
+3. **Add a Procfile:**
+```
+web: gunicorn app:app
+```
+
+4. **Deploy:**
+```bash
+git push heroku main
+```
+
+### Local Development
+
+1. **Install dependencies:**
+```bash
+pip install -r requirements.txt
+```
+
+2. **Run the application:**
+```bash
+python app.py
+```
+
+3. **Open your browser:**
+   - Go to `http://localhost:5000`
+   - Upload a plant image to test the prediction
+
 ## File Structure
 
 ```
 DNA-PROJECT/
+├── app.py                          # Flask web application
+├── templates/
+│   └── index.html                  # Web interface
 ├── dataset/
 │   ├── Train_Set_Folder/
 │   ├── Validation_Set_Folder/
 │   └── Test_Set_Folder/
-├── train_plant_classifier.py
-├── predict_plant.py
-├── best_model.h5
+├── train_plant_classifier.py       # Training script
+├── predict_plant.py               # Command-line prediction
+├── best_model.h5                  # Trained model
+├── requirements.txt               # Python dependencies
+├── render.yaml                    # Render deployment config
 ├── .gitignore
 └── README.md
 ```
